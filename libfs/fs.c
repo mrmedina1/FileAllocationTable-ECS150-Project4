@@ -53,7 +53,7 @@ static int open_count = 0; //Checks against FS_OPEN_MAX_COUNT
 
 void mem_clear(void)
 {
-  for(int i = 1; i < SUPERBLOCK.num_fat_blocks*(BLOCK_SIZE/2); i++)
+  for(int i = 1; i < SUPERBLOCK.num_fat_blocks*BLOCK_SIZE/2; i++)
   {
     FAT[i].fat -> index = 0;
   }
