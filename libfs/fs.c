@@ -78,13 +78,7 @@ int fs_mount(const char *diskname)
   {
     block_read(i+1, (void*)&FAT -> fat+(4096/2)*i);
   }
-/*
-    printf("total_blk_count in mount=%d\n", SUPERBLOCK.num_blocks_vdisk);
-	printf("fat_blk_count in mount=%d\n", SUPERBLOCK.num_fat_blocks);
-	printf("rdir_blk in mount=%d\n", SUPERBLOCK.rootDir_block_index);
-	printf("data_blk in mount=%d\n", SUPERBLOCK.datablock_start_index);
-	printf("data_blk_count in mount=%d\n", SUPERBLOCK.num_data_blocks);
-*/
+
   //Read Root block, set disk to open
   block_read(SUPERBLOCK.rootDir_block_index, ROOTDIR);
   
