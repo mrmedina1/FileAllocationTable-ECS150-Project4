@@ -70,15 +70,24 @@ int fs_mount(const char *diskname)
   if (block_disk_open(diskname) == -1) { return -1; }
    
   block_read(0, (void*)&SUPERBLOCK);
-
+  
+  FAT = malloc(sizeof(struct FileAllocTable));
+	
   //Read FAT block
   for(int i = 0; i < SUPERBLOCK.num_fat_blocks; i++)
   {
-    block_read(i+1, (void*)&FAT+(4096/2)*i);
+    block_read(i+1, (void*)&FAT -> fat+(4096/2)*i);
   }
-
+/*
+    printf("total_blk_count in mount=%d\n", SUPERBLOCK.num_blocks_vdisk);
+	printf("fat_blk_count in mount=%d\n", SUPERBLOCK.num_fat_blocks);
+	printf("rdir_blk in mount=%d\n", SUPERBLOCK.rootDir_block_index);
+	printf("data_blk in mount=%d\n", SUPERBLOCK.datablock_start_index);
+	printf("data_blk_count in mount=%d\n", SUPERBLOCK.num_data_blocks);
+*/
   //Read Root block, set disk to open
   block_read(SUPERBLOCK.rootDir_block_index, ROOTDIR);
+  
   open_disk = true;
   
   return 0;
@@ -93,7 +102,7 @@ int fs_umount(void)
   block_write(0, (void*)&SUPERBLOCK);
 
   //Write FAT block
-  for(int i = 0; i <SUPERBLOCK.num_fat_blocks; i++)
+  for(int i = 0; i < SUPERBLOCK.num_fat_blocks; i++)
   {
     block_write(i+1, (void*)&FAT+(4096/2)*i);
   }
@@ -126,14 +135,35 @@ int fs_info(void)
   //Return error
   if(open_disk == false){ return -1; }
   
+  //Calculate free fat blocks
+  uint16_t freeFatBlocks = 0;
+  for(int i = 0; i < SUPERBLOCK.num_data_blocks; i++)
+  {
+    if(FAT -> fat[i].index == 0)
+    {
+        freeFatBlocks++;
+    }
+  }
+  
+  //Calculate free roots
+  uint8_t freeRoots = 0;
+  for(int i = 0; i < FS_FILE_MAX_COUNT; i++)
+  {
+    if(ROOTDIR[i].filename[0] == '\0')
+    {
+        freeRoots++;
+    }        
+  }
+
+  printf("FS Info:\n");
   printf("total_blk_count=%d\n", SUPERBLOCK.num_blocks_vdisk);
   printf("fat_blk_count=%d\n", SUPERBLOCK.num_fat_blocks);
   printf("rdir_blk=%d\n", SUPERBLOCK.rootDir_block_index);
   printf("data_blk=%d\n", SUPERBLOCK.datablock_start_index);
   printf("data_blk_count=%d\n", SUPERBLOCK.num_data_blocks);
-  //printf("fat_free_ratio=%d/%d\n", calc_fat_free(), SUPERBLOCK.num_data_blocks);
-  //printf("rdir_free_ratio=%d/%d\n", calc_root_free(),FS_FILE_MAX_COUNT);
-    
+  printf("fat_free_ratio=%d/%d\n", freeFatBlocks, SUPERBLOCK.num_data_blocks);
+  printf("rdir_free_ratio=%d/%d\n", freeRoots, FS_FILE_MAX_COUNT);
+
   return 0;
 }
 
