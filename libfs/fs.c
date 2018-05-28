@@ -55,7 +55,7 @@ void mem_clear(void)
 {
   for(int i = 1; i < SUPERBLOCK.num_fat_blocks*BLOCK_SIZE/2; i++)
   {
-    FAT[i].fat -> index = 0;
+    FAT -> fat[i].index = 0;
   }
   SUPERBLOCK.signature[0] = '\0';
   SUPERBLOCK.num_blocks_vdisk = 0;
