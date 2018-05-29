@@ -45,11 +45,22 @@ struct FileAllocTable
   struct dataBlock fat[8192];
 }__attribute__((packed));
 
+struct open_file
+{
+  uint8_t root_index;
+  char filename[16];
+  uint16_t fileDescriptor;
+  uint16_t block_offset;
+  uint16_t file_offset;
+}__attribute__((packed));
+
+struct open_file OFILE[32];
 struct superblock SUPERBLOCK;
 struct rootDirectory ROOTDIR[128];
 struct FileAllocTable *FAT = 0;
 static bool open_disk = false;
 static int open_count = 0; //Checks against FS_OPEN_MAX_COUNT
+static int file_count = 0;
 
 void mem_clear(void)
 {
@@ -70,9 +81,11 @@ int fs_mount(const char *diskname)
   if (block_disk_open(diskname) == -1) { return -1; }
    
   block_read(0, (void*)&SUPERBLOCK);
-  
-  FAT = malloc(sizeof(struct FileAllocTable));
-	
+
+  if (FAT == 0)
+  {  
+    FAT = malloc(sizeof(struct FileAllocTable));
+	}
   //Read FAT block
   for(int i = 0; i < SUPERBLOCK.num_fat_blocks; i++)
   {
@@ -164,13 +177,80 @@ int fs_info(void)
 int fs_create(const char *filename)
 {
 	/* TODO: Phase 2 */
-  return 1;  
+  if (open_disk == false || strlen(filename) > (FS_FILENAME_LEN - 1) || (file_count >= FS_FILE_MAX_COUNT-1))
+  {
+    return -1;
+  } 
+  
+  for (int i=0; i<FS_FILE_MAX_COUNT; i++)
+  {
+    if (strncmp(ROOTDIR[i].filename, filename, strlen(filename))==0)
+    {
+      return -1;
+    }
+  }
+  
+  for (int j = 0; j < FS_FILE_MAX_COUNT; j++)
+  {
+    if (ROOTDIR[j].filename[0] == '\0')
+    {
+      strcpy(ROOTDIR[j].filename, filename);
+      ROOTDIR[j].file_size = 0;
+      ROOTDIR[j].file_index = FAT_EOC;
+      break;
+     }
+  }
+  file_count++;
+  return 0;  
 }
 
 int fs_delete(const char *filename)
 {
 	/* TODO: Phase 2 */
-  return 1;  
+  int flag = 0;
+  int index = 0;
+  
+  if (open_disk == false || filename[strlen(filename)] != '\0' || (strlen(filename) > FS_FILENAME_LEN-1))
+  {
+    return -1;
+  }
+  
+   for(int i=0; i<FS_FILE_MAX_COUNT; i++) //parses through all files in ROOT
+   {
+     if(strncmp(ROOTDIR[i].filename,filename,16)==0)//if we found the file
+     {
+
+       for(int j=0; j<FS_OPEN_MAX_COUNT; j++)//check open file array
+       {
+         if(strncmp(OFILE[j].filename,filename,16)==0)//fd is still open
+         {
+           return -1;
+         }
+        }
+        flag = 1;
+        index = i;
+        break;
+      }
+    }
+
+    if(flag)
+    {
+      ROOTDIR[index].filename[0] = '\0';
+      ROOTDIR[index].file_size = 0;
+      ROOTDIR[index].file_index = 0; //not sure about this
+      file_count--;
+      int k = ROOTDIR[index].file_index;
+      while(FAT->fat[k].index!=FAT_EOC)
+      {
+      //clears out FAT indexes when file is deleted
+        int temp = k;
+        k = FAT->fat[k].index; 
+        FAT->fat[temp].index = 0;
+      }
+      return 0;
+    } 
+
+    return -1;  //if we did not find the file in our root directory
 }
 
 int fs_ls(void)
