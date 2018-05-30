@@ -45,21 +45,21 @@ struct FileAllocTable
   struct dataBlock fat[8192];
 }__attribute__((packed));
 
-struct open_file
+struct fd_open
 {
   char filename[16];
-  uint8_t rootIndex;
+  uint8_t index;
   uint16_t fileDescriptor;
   uint16_t blockOffset;
   uint16_t fileOffset;
 }__attribute__((packed));
 
-struct open_file OFILE[32];
+struct fd_open FDTable[32];
+static int fd_count = 0; //Checks against FS_OPEN_MAX_COUNT
 struct superblock SUPERBLOCK;
 struct rootDirectory ROOTDIR[128];
 struct FileAllocTable *FAT = 0;
 static bool open_disk = false;
-static int open_count = 0; //Checks against FS_OPEN_MAX_COUNT
 static int file_count = 0;
 
 void mem_clear(void)
@@ -76,37 +76,28 @@ void mem_clear(void)
   SUPERBLOCK.num_fat_blocks = 0;
 }
 
-uint16_t find_free_fat(void) // finds the first available block
-{
-    for(uint16_t i = 0; i < SUPERBLOCK.num_data_blocks; i++)
-    {
-        if(FAT->fat[i].index == 0)
-  {
-            return i;
-        }
-
-    }
-    return FAT_EOC;
-}
-
-uint16_t find_next_fat(uint16_t index)//finds next block that file is mapped to
-{
-    return FAT->fat[index].index;
-}
-
-//Gets the next fat block
-uint16_t GetNextFatBlock(uint16_t i)
-{
-    return FAT -> fat[i].index;
-}
-
 int num_blocks_spanning(uint32_t offset, size_t count, int written_bytes)
 {
-  if (((offset%BLOCK_SIZE) + (count - written_bytes)) > BLOCK_SIZE)
+  int num_spanning_blocks = ((offset%BLOCK_SIZE) + (count - written_bytes));
+  if (num_spanning_blocks  > BLOCK_SIZE)
   {
     return 1;
   }
-  else if (((offset%BLOCK_SIZE) + (count - written_bytes)) <= BLOCK_SIZE)
+  else if (num_spanning_blocks <= BLOCK_SIZE)
+  {
+    return 0;
+  }
+  return -1;
+}
+
+int num_blocks_spanning_read(uint32_t offset, size_t count, int read_bytes)
+{
+  int num_spanning_blocks = ((offset%BLOCK_SIZE) + (count - read_bytes));
+  if (num_spanning_blocks >= BLOCK_SIZE)
+  {
+    return 1;
+  }
+  else if (num_spanning_blocks < BLOCK_SIZE)
   {
     return 0;
   }
@@ -142,7 +133,7 @@ int fs_umount(void)
 {
   //If the open file descriptor count is not 0 or no virtual disk files opened
   //Return error
-  if(open_disk == false || open_count > 0){ return -1; }
+  if(open_disk == false || fd_count > 0){ return -1; }
 
   block_write(0, (void*)&SUPERBLOCK);
 
@@ -242,6 +233,8 @@ int fs_create(const char *filename)
 int fs_delete(const char *filename)
 {
 	/* TODO: Phase 2 */
+//  int found_file = 0;
+  /* TODO: Phase 2 */
   int found_file = 0;
   int index = 0;
   
@@ -249,43 +242,41 @@ int fs_delete(const char *filename)
   {
     return -1;
   }
-  
-   for(int i=0; i<FS_FILE_MAX_COUNT; i++) //parses through all files in ROOT
-   {
-     if(strncmp(ROOTDIR[i].filename,filename,16)==0)//if we found the file
-     {
+  printf("line 252\n");
 
-       for(int j=0; j<FS_OPEN_MAX_COUNT; j++)//check open file array
-       {
-         if(strncmp(OFILE[j].filename,filename,16)==0)//fd is still open
-         {
-           return -1;
-         }
-        }
-        flag = 1;
-        index = i;
-        break;
-      }
-    }
-
-    if(flag)
+  for(int i=0; i<FS_FILE_MAX_COUNT; i++) //parses through all files in ROOT
+  {
+    if(strncmp(ROOTDIR[i].filename,filename,16)==0)//if we found the file
     {
-      ROOTDIR[index].filename[0] = '\0';
-      ROOTDIR[index].file_size = 0;
-      ROOTDIR[index].file_index = 0; //not sure about this
-      file_count--;
-      int k = ROOTDIR[index].file_index;
-      while(FAT->fat[k].index!=FAT_EOC)
+      found_file = 1;
+      index = i;
+      break;
+    }
+  }
+  printf("line 263\n");
+  if (found_file == 0) {return -1;}
+ 
+  for(int j=0; j<FS_OPEN_MAX_COUNT; j++)//check open file array
+  {
+      if(strncmp(FDTable[j].filename,filename,16)==0)//fd is still open
       {
-      //clears out FAT indexes when file is deleted
-        int temp = k;
-        k = FAT->fat[k].index; 
-        FAT->fat[temp].index = 0;
+          return -1;
       }
-      return 0;
-    } 
-
-    return -1;  //if we did not find the file in our root directory
+  }
+  ROOTDIR[index].filename[0] = '\0';
+  ROOTDIR[index].file_size = 0;
+  ROOTDIR[index].file_index = 0; 
+  file_count--;
+  int k = ROOTDIR[index].file_index;
+  while(FAT->fat[k].index!=FAT_EOC)
+  {
+    //clears out FAT indexes when file is deleted
+      int temp = k;
+      k = FAT->fat[k].index; 
+      FAT->fat[temp].index = 0;
+  }
+  printf("line 286\n");
+  return 0;
 }
 
 int fs_ls(void)
@@ -316,7 +307,7 @@ int fs_open(const char *filename)
   //or if there are already %FS_OPEN_MAX_COUNT files currently open
   //if(filename[strlen(filename)] != '\0'
   
-  if(strlen(filename) > (FS_FILENAME_LEN-1) || open_count > FS_OPEN_MAX_COUNT)
+  if(strlen(filename) > (FS_FILENAME_LEN-1) || fd_count > FS_OPEN_MAX_COUNT)
   {
     return -1;
   } 
@@ -344,15 +335,15 @@ int fs_open(const char *filename)
 
   for(int j = 0; j < FS_OPEN_MAX_COUNT; j++)
   {
-      if(OFILE[j].filename[0] == '\0')
+      if(FDTable[j].filename[0] == '\0')
 		  {
 		  /*find first available entry and initialize the ofile struct*/
-          strncpy(OFILE[j].filename, filename, strlen(filename));
-          OFILE[j].fileDescriptor = j;
-          OFILE[j].rootIndex = rootindex;
-          OFILE[j].blockOffset = ROOTDIR[rootindex].file_index;
-          OFILE[j].fileOffset = 0;
-          open_count++;
+          strncpy(FDTable[j].filename, filename, strlen(filename));
+          FDTable[j].fileDescriptor = j;
+          FDTable[j].index = rootindex;
+          FDTable[j].blockOffset = ROOTDIR[rootindex].file_index;
+          FDTable[j].fileOffset = 0;
+          fd_count++;
           filedescriptor = j; //return the file descriptor
        }
    }
@@ -371,11 +362,11 @@ int fs_close(int fd)
   
   //If fd is greater than max num of open files, out of bounds, or not open
   //Return error
-  if(fd > (FS_OPEN_MAX_COUNT - 1) || fd < 0 || OFILE[fd].filename[0] == ('\0'))
+  if(fd > (FS_OPEN_MAX_COUNT - 1) || fd < 0 || FDTable[fd].filename[0] == ('\0'))
   { return -1; }
   
-  OFILE[fd].filename[0] = ('\0');
-  open_count--;
+  FDTable[fd].filename[0] = ('\0');
+  fd_count--;
   
   return 0;
 }
@@ -388,16 +379,13 @@ int fs_stat(int fd)
 
   //If fd is greater than max num of open files, out of bounds, or not open
   //Return error
-  if(fd > (FS_OPEN_MAX_COUNT - 1) || fd < 0 || OFILE[fd].filename[0] == '\0')
+  if(fd > (FS_OPEN_MAX_COUNT - 1) || fd < 0 || FDTable[fd].filename[0] == '\0')
   { return -1; }
 
-  //int rootDirIndex;
-
   //Checks files in root directory to find match
-  //if found store the root directory index and break
   for(int i = 0; i < FS_FILE_MAX_COUNT; i++)
   {
-    if(strncmp(ROOTDIR[i].filename, OFILE[fd].filename, 16) == 0)
+    if(strncmp(ROOTDIR[i].filename, FDTable[fd].filename, 16) == 0)
     {
       return ROOTDIR[i].file_size;
     }
@@ -417,24 +405,24 @@ int fs_lseek(int fd, size_t offset)
   
   //If fd is greater than max num of open files, out of bounds, or not open
   //Return error
-  if(fd > (FS_OPEN_MAX_COUNT - 1) || fd < 0 || OFILE[fd].filename[0] == '\0')
+  if(fd > (FS_OPEN_MAX_COUNT - 1) || fd < 0 || FDTable[fd].filename[0] == '\0')
   { return -1; }
 
   //If offset is beyond the end of file
   //Return error
-  if(offset > ROOTDIR[OFILE[fd].rootIndex].file_size )
+  if(offset > ROOTDIR[FDTable[fd].index].file_size )
   {
     return -1;
   }
 
   //Set block offset to start index of data block, and set open files offset
-  OFILE[fd].blockOffset = ROOTDIR[OFILE[fd].rootIndex].file_index;
-  OFILE[fd].fileOffset = offset;
+  FDTable[fd].blockOffset = ROOTDIR[FDTable[fd].index].file_index;
+  FDTable[fd].fileOffset = offset;
 
   //Update block offset
   for(int i = 0; i < offset/BLOCK_SIZE; i++)
   {
-    OFILE[fd].blockOffset = FAT->fat[OFILE[fd].blockOffset].index;
+    FDTable[fd].blockOffset = FAT->fat[FDTable[fd].blockOffset].index;
   }
 
   return 0;
@@ -447,56 +435,54 @@ int fs_write(int fd, void *buf, size_t count)
    if(open_disk == false) {return -1; }
 
     if(fd < 0 || count < 0 ||
-        fd > FS_OPEN_MAX_COUNT-1 || OFILE[fd].filename[0] == '\0')
+        fd > FS_OPEN_MAX_COUNT-1 || FDTable[fd].filename[0] == '\0')
     {
         return -1;
     }
 
-    if(ROOTDIR[OFILE[fd].rootIndex].file_index == FAT_EOC)
+    if(ROOTDIR[FDTable[fd].index].file_index == FAT_EOC)
     {
         for (int i = 0; i < SUPERBLOCK.num_data_blocks; i++)
         {
           if (FAT->fat[i].index == 0)
           {
-            ROOTDIR[OFILE[fd].rootIndex].file_index = i;
+            ROOTDIR[FDTable[fd].index].file_index = i;
             next_fat_found = 1;
             break;
           }
         }
-       // ROOTDIR[OFILE[fd].rootIndex].file_index = find_free_fat();
         if(next_fat_found == 0) {return 0; }
         
-        FAT->fat[ROOTDIR[OFILE[fd].rootIndex].file_index].index = FAT_EOC;
-        OFILE[fd].blockOffset = ROOTDIR[OFILE[fd].rootIndex].file_index;
+        FAT->fat[ROOTDIR[FDTable[fd].index].file_index].index = FAT_EOC;
+        FDTable[fd].blockOffset = ROOTDIR[FDTable[fd].index].file_index;
     }
     void *block_read_buffer[4096];
-    uint16_t FATOffset = OFILE[fd].blockOffset;
-    uint32_t fileOffset = OFILE[fd].fileOffset;
-    uint32_t fileOffsetRem = (OFILE[fd].fileOffset % BLOCK_SIZE);
+    uint16_t FATOffset = FDTable[fd].blockOffset;
+    uint32_t fileOffset = FDTable[fd].fileOffset;
+    uint32_t fileOffsetRem = (FDTable[fd].fileOffset % BLOCK_SIZE);
     uint16_t temp_blockOffset;
     int written_bytes = 0;
     int next_fat_found_two;
     int is_space_in_buffer = 1;
     int num_spanning_blocks;
-    /*do this while there is still space to write into the buffer*/
     while(is_space_in_buffer)
     {
-        block_read(FATOffset+SUPERBLOCK.datablock_start_index, block_read_buffer);//reads in one block at a time
+        block_read(FATOffset+SUPERBLOCK.datablock_start_index, block_read_buffer);
         num_spanning_blocks = num_blocks_spanning(fileOffset, count, written_bytes);
         if (num_spanning_blocks == -1) {return -1;}
-      /*the write spans multiple blocks*/
+        fileOffsetRem = (FDTable[fd].fileOffset % BLOCK_SIZE);
         if(num_spanning_blocks == 1)
         {
-            memcpy(block_read_buffer+fileOffsetRem, buf+written_bytes,(BLOCK_SIZE-(fileOffsetRem))); // copy to the end of the block
+            memcpy(block_read_buffer+fileOffsetRem, buf+written_bytes,(BLOCK_SIZE-(fileOffsetRem))); 
             block_write(FATOffset+SUPERBLOCK.datablock_start_index, block_read_buffer);
-            if(ROOTDIR[OFILE[fd].rootIndex].file_size < (OFILE[fd].fileOffset+(BLOCK_SIZE-fileOffsetRem)))
+            if(ROOTDIR[FDTable[fd].index].file_size < (FDTable[fd].fileOffset+(BLOCK_SIZE-fileOffsetRem)))
             {
-                ROOTDIR[OFILE[fd].rootIndex].file_size += (BLOCK_SIZE-fileOffsetRem);
+                ROOTDIR[FDTable[fd].index].file_size += (BLOCK_SIZE-fileOffsetRem);
             }
-            written_bytes += (BLOCK_SIZE-fileOffsetRem); //increment the written_bytes with what was able to be write
-            fileOffset += (BLOCK_SIZE-fileOffsetRem); // increment the offset with what was write
-            OFILE[fd].fileOffset = (BLOCK_SIZE-fileOffsetRem);
-            temp_blockOffset = FAT->fat[OFILE[fd].blockOffset].index; // write to the next block
+            written_bytes += (BLOCK_SIZE-fileOffsetRem); 
+            fileOffset += (BLOCK_SIZE-fileOffsetRem); 
+            FDTable[fd].fileOffset = (BLOCK_SIZE-fileOffsetRem);
+            temp_blockOffset = FAT->fat[FDTable[fd].blockOffset].index; 
 
             next_fat_found_two = 0;
             if (temp_blockOffset == FAT_EOC)
@@ -512,86 +498,79 @@ int fs_write(int fd, void *buf, size_t count)
                 }
                 if(next_fat_found_two == 0)
                 {
-                    FAT->fat[OFILE[fd].blockOffset].index = temp_blockOffset;
+                    FAT->fat[FDTable[fd].blockOffset].index = temp_blockOffset;
                     return written_bytes;
                 }
             }
-            OFILE[fd].blockOffset = temp_blockOffset;
+            FDTable[fd].blockOffset = temp_blockOffset;
             FATOffset = temp_blockOffset;
-            FAT->fat[OFILE[fd].blockOffset].index = temp_blockOffset;
+            FAT->fat[FDTable[fd].blockOffset].index = temp_blockOffset;
         }
 
-        else if(num_spanning_blocks == 0)//the write only spans 1 block
+        else if(num_spanning_blocks == 0)
         {
             memcpy( block_read_buffer+fileOffsetRem, buf+written_bytes, (count - written_bytes));
             block_write(FATOffset+SUPERBLOCK.datablock_start_index, block_read_buffer);
-            if(ROOTDIR[OFILE[fd].rootIndex].file_size < fileOffset+ (count - written_bytes))
+            if(ROOTDIR[FDTable[fd].index].file_size < fileOffset+ (count - written_bytes))
             {
-                ROOTDIR[OFILE[fd].rootIndex].file_size +=(count - written_bytes);
+                ROOTDIR[FDTable[fd].index].file_size +=(count - written_bytes);
             }
-            OFILE[fd].fileOffset += (count - written_bytes); 
-            written_bytes+=(count - written_bytes); //increment the written_bytes with what was able to be write
-            fileOffset =  OFILE[fd].fileOffset;
+            FDTable[fd].fileOffset += (count - written_bytes); 
+            written_bytes+=(count - written_bytes); 
+            fileOffset =  FDTable[fd].fileOffset;
         }
         if (written_bytes >= count) { is_space_in_buffer = 0; }
     }
     return written_bytes;
-
-//  return 1;  
 }
 
 int fs_read(int fd, void *buf, size_t count)
 {
 	/* TODO: Phase 4 */
    if(open_disk == false||count < 0||fd < 0
-  ||fd > FS_OPEN_MAX_COUNT-1||OFILE[fd].filename[0] == '\0')
+  ||fd > FS_OPEN_MAX_COUNT-1||FDTable[fd].filename[0] == '\0')
     {
         return -1;
     }
 
-    int bytes_read = 0;
-    void *buffer[4096];
-    uint32_t filesize = ROOTDIR[OFILE[fd].rootIndex].file_size;
-    uint16_t FATOffset = OFILE[fd].blockOffset;
-    uint32_t fileOffset = OFILE[fd].fileOffset;
-    uint32_t temp_count = 0;
+    int read_bytes = 0;
+    void *block_read_buffer[4096];
+    uint32_t fileSize = ROOTDIR[FDTable[fd].index].file_size;
+    uint16_t blockOffset = FDTable[fd].blockOffset;
+    uint32_t fileOffset = FDTable[fd].fileOffset;
+    uint32_t fileOffsetRem = (FDTable[fd].fileOffset % BLOCK_SIZE);
+    uint32_t max_count = count;
+    int is_space_in_buffer = 1;
+    int num_spanning_blocks;
+    
+    if(fileOffset + count > fileSize) {max_count = fileSize-fileOffset;}
 
-    /*adjusts the size of the count to fit into the file size*/
-    if(fileOffset + count > filesize)
+    while(is_space_in_buffer)
     { 
-        /*gaurantees the count will only ask for at most to the end of the file*/
-        temp_count = filesize - fileOffset;
-    }
-    else
-    {
-        temp_count = count;
-    }
+        block_read(blockOffset+SUPERBLOCK.datablock_start_index, block_read_buffer);
+        fileOffsetRem = (FDTable[fd].fileOffset % BLOCK_SIZE);
+        num_spanning_blocks = num_blocks_spanning_read(fileOffset, max_count, read_bytes);
+        if (num_spanning_blocks == -1) {return -1;}
 
-    /*do this while there is still space to read into the buffer*/
-    while(bytes_read < temp_count)
-    { 
-        block_read(FATOffset+SUPERBLOCK.datablock_start_index, buffer);//reads in one block at a time
-        /*the read spans multiple blocks*/
-        if(((fileOffset%BLOCK_SIZE) + (temp_count - bytes_read)) >= BLOCK_SIZE)
+        if(num_spanning_blocks == 1)
         {
-            memcpy(buf+bytes_read, buffer+(fileOffset%BLOCK_SIZE), (BLOCK_SIZE-(fileOffset%BLOCK_SIZE))); // copy to the end of the block
-            bytes_read+=(BLOCK_SIZE-(fileOffset%BLOCK_SIZE)); //increment the bytes_read with what was able to be read
-            OFILE[fd].fileOffset += BLOCK_SIZE - (fileOffset%BLOCK_SIZE); // increment the offset with what was read
-            fileOffset =  OFILE[fd].fileOffset;
-            FATOffset = find_next_fat(OFILE[fd].blockOffset); // move to the next block
-            OFILE[fd].blockOffset = FATOffset;//update the next block offset
+            memcpy(buf+read_bytes, block_read_buffer+(fileOffsetRem), (BLOCK_SIZE-(fileOffsetRem))); 
+            read_bytes+=(BLOCK_SIZE-(fileOffsetRem)); 
+            FDTable[fd].fileOffset += BLOCK_SIZE - (fileOffsetRem); 
+            fileOffset =  FDTable[fd].fileOffset;
+            blockOffset = FAT->fat[FDTable[fd].blockOffset].index; 
+            FDTable[fd].blockOffset = blockOffset;
         }
 
-        else if(((fileOffset%BLOCK_SIZE) + (temp_count - bytes_read)) < BLOCK_SIZE)//the read only spans 1 block
+        else if(num_spanning_blocks == 0)
         {
-            memcpy(buf+bytes_read, buffer+(fileOffset%BLOCK_SIZE), (temp_count - bytes_read));
-            bytes_read+=(temp_count - bytes_read); //increment the bytes_read with what was able to be read
-            OFILE[fd].fileOffset += (temp_count - bytes_read); // increment the offset with what was read
-            fileOffset =  OFILE[fd].fileOffset;
+            memcpy(buf+read_bytes, block_read_buffer+(fileOffsetRem), (max_count - read_bytes));
+            read_bytes+=(max_count - read_bytes); 
+            FDTable[fd].fileOffset += (max_count - read_bytes); 
+            fileOffset =  FDTable[fd].fileOffset;
         }
+        if (read_bytes >= max_count) { is_space_in_buffer = 0;}
     }
-    return bytes_read;
-
-//  return 1;  
+    return read_bytes;
 }
 
