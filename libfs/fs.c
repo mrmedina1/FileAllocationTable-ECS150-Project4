@@ -47,11 +47,11 @@ struct FileAllocTable
 
 struct open_file
 {
-  uint8_t root_index;
+  uint8_t rootIndex;
   char filename[16];
   uint16_t fileDescriptor;
-  uint16_t block_offset;
-  uint16_t file_offset;
+  uint16_t blockOffset;
+  uint16_t fileOffset;
 }__attribute__((packed));
 
 struct open_file OFILE[32];
@@ -74,6 +74,12 @@ void mem_clear(void)
   SUPERBLOCK.datablock_start_index = 0;
   SUPERBLOCK.num_data_blocks = 0;
   SUPERBLOCK.num_fat_blocks = 0;
+}
+
+//Gets the next fat block
+uint16_t GetNextFatBlock(uint16_t i)
+{
+    return FAT -> fat[i].index;
 }
 
 int fs_mount(const char *diskname)
@@ -128,14 +134,6 @@ int fs_umount(void)
   return 0;
 }
 
-  char signature[8];
-  uint16_t num_blocks_vdisk;
-  uint16_t rootDir_block_index;
-  uint16_t datablock_start_index;
-  uint16_t num_data_blocks;
-  uint8_t num_fat_blocks;
-  uint8_t padding[4079];
-
 int fs_info(void)
 {
   //If there is no virtual disk file opened
@@ -182,7 +180,7 @@ int fs_create(const char *filename)
     return -1;
   } 
   
-  for (int i=0; i<FS_FILE_MAX_COUNT; i++)
+  for (int i=0; i < FS_FILE_MAX_COUNT; i++)
   {
     if (strncmp(ROOTDIR[i].filename, filename, strlen(filename))==0)
     {
@@ -261,26 +259,124 @@ int fs_ls(void)
 
 int fs_open(const char *filename)
 {
-	/* TODO: Phase 3 */
-  return 1;  
+  //If disk isn't open
+  //Return error
+  if(open_disk == false) { return -1; } 
+
+  //check if null terminated string,if string length appropriate, 
+  //or if there are already %FS_OPEN_MAX_COUNT files currently open
+  //if(filename[strlen(filename)] != '\0'
+  
+  if(strlen(filename) > (FS_FILENAME_LEN-1) || open_count > FS_OPEN_MAX_COUNT)
+  {
+    return -1;
+  } 
+
+    /*parses through all files in root directory to find a match*/
+    for(int i = 0; i < FS_FILE_MAX_COUNT; i++)
+    {
+        if(strncmp(ROOTDIR[i].filename,filename,strlen(filename)) == 0)
+        {
+	    /*if we found the file to open*/
+            for(int j = 0; j < FS_OPEN_MAX_COUNT; j++)
+            {
+                if(OFILE[j].filename[0] == '\0')
+		{
+		    /*find first available entry and initialize the ofile struct*/
+                    strcpy(OFILE[j].filename, filename);
+					
+                    OFILE[j].fileDescriptor = j;
+                    OFILE[j].rootIndex = i;
+                    OFILE[j].blockOffset = ROOTDIR[i].file_index;
+                    OFILE[j].fileOffset = 0;
+					
+                    open_count++;
+					
+                    return j; //return the file descriptor
+                }
+            }
+        }
+    }
+	
+	//If there isnt a file named @filename to open
+	//Return error
+    return -1;
 }
 
 int fs_close(int fd)
 {
-	/* TODO: Phase 3 */
-  return 1;  
+  //If disk isn't open
+  //Return error
+  if(open_disk == false) { return -1; }
+  
+  //If fd is greater than max num of open files, out of bounds, or not open
+  //Return error
+  if(fd > (FS_OPEN_MAX_COUNT - 1) || fd < 0 || OFILE[fd].filename[0] == ('\0'))
+  { return -1; }
+  
+  OFILE[fd].filename[0] = ('\0');
+  open_count--;
+  
+  return 0;
 }
 
 int fs_stat(int fd)
 {
-	/* TODO: Phase 3 */
-  return 1;  
+  //If disk isn't open
+  //Return error
+  if(open_disk == false) { return -1; }
+
+  //If fd is greater than max num of open files, out of bounds, or not open
+  //Return error
+  if(fd > (FS_OPEN_MAX_COUNT - 1) || fd < 0 || OFILE[fd].filename[0] == '\0')
+  { return -1; }
+
+  int rootDirIndex;
+
+  //Checks files in root directory to find match
+  //if found store the root directory index and break
+  for(int i = 0; i < FS_FILE_MAX_COUNT; i++)
+  {
+    if(strncmp(ROOTDIR[i].filename, OFILE[fd].filename, 16) == 0)
+    {
+      rootDirIndex = i;
+      break;
+    }
+  }
+  
+  //Return current size of the file
+  return ROOTDIR[rootDirIndex].file_size;
 }
 
 int fs_lseek(int fd, size_t offset)
 {
-	/* TODO: Phase 3 */
-  return 1;  
+  //If disk isn't open
+  //Return error
+  if(open_disk == false) { return -1; }
+  
+  //If fd is greater than max num of open files, out of bounds, or not open
+  //Return error
+  if(fd > (FS_OPEN_MAX_COUNT - 1) || fd < 0 || OFILE[fd].filename[0] == '\0')
+  { return -1; }
+
+  //If offset is beyond the end of file
+  //Return error
+  if(offset > ROOTDIR[OFILE[fd].rootIndex].file_size )
+  {
+    return -1;
+  }
+
+  //Set block offset to start index of data block, and set open files offset
+  OFILE[fd].blockOffset = ROOTDIR[OFILE[fd].rootIndex].file_index;
+  OFILE[fd].fileOffset = offset;
+
+  //Update block offset
+  for(int i = 0; i < offset/BLOCK_SIZE; i++)
+  {
+    OFILE[fd].blockOffset = GetNextFatBlock(OFILE[fd].blockOffset);
+  }
+
+  return 0;
 }
 
 int fs_write(int fd, void *buf, size_t count)
