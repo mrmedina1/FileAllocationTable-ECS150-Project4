@@ -457,7 +457,7 @@ int fs_write(int fd, void *buf, size_t count)
         FDTable[fd].blockOffset = ROOTDIR[FDTable[fd].index].file_index;
     }
     void *block_read_buffer[4096];
-    uint16_t FATOffset = FDTable[fd].blockOffset;
+    uint16_t blockOffset = FDTable[fd].blockOffset;
     uint32_t fileOffset = FDTable[fd].fileOffset;
     uint32_t fileOffsetRem = (FDTable[fd].fileOffset % BLOCK_SIZE);
     uint16_t temp_blockOffset;
@@ -467,14 +467,14 @@ int fs_write(int fd, void *buf, size_t count)
     int num_spanning_blocks;
     while(is_space_in_buffer)
     {
-        block_read(FATOffset+SUPERBLOCK.datablock_start_index, block_read_buffer);
+        block_read(blockOffset+SUPERBLOCK.datablock_start_index, block_read_buffer);
         num_spanning_blocks = num_blocks_spanning(fileOffset, count, written_bytes);
         if (num_spanning_blocks == -1) {return -1;}
         fileOffsetRem = (FDTable[fd].fileOffset % BLOCK_SIZE);
         if(num_spanning_blocks == 1)
         {
             memcpy(block_read_buffer+fileOffsetRem, buf+written_bytes,(BLOCK_SIZE-(fileOffsetRem))); 
-            block_write(FATOffset+SUPERBLOCK.datablock_start_index, block_read_buffer);
+            block_write(blockOffset+SUPERBLOCK.datablock_start_index, block_read_buffer);
             if(ROOTDIR[FDTable[fd].index].file_size < (FDTable[fd].fileOffset+(BLOCK_SIZE-fileOffsetRem)))
             {
                 ROOTDIR[FDTable[fd].index].file_size += (BLOCK_SIZE-fileOffsetRem);
@@ -503,14 +503,14 @@ int fs_write(int fd, void *buf, size_t count)
                 }
             }
             FDTable[fd].blockOffset = temp_blockOffset;
-            FATOffset = temp_blockOffset;
+            blockOffset = temp_blockOffset;
             FAT->fat[FDTable[fd].blockOffset].index = temp_blockOffset;
         }
 
         else if(num_spanning_blocks == 0)
         {
             memcpy( block_read_buffer+fileOffsetRem, buf+written_bytes, (count - written_bytes));
-            block_write(FATOffset+SUPERBLOCK.datablock_start_index, block_read_buffer);
+            block_write(blockOffset+SUPERBLOCK.datablock_start_index, block_read_buffer);
             if(ROOTDIR[FDTable[fd].index].file_size < fileOffset+ (count - written_bytes))
             {
                 ROOTDIR[FDTable[fd].index].file_size +=(count - written_bytes);
