@@ -100,6 +100,20 @@ uint16_t GetNextFatBlock(uint16_t i)
     return FAT -> fat[i].index;
 }
 
+int num_blocks_spanning(uint32_t offset, size_t count, int written_bytes)
+{
+  if (((offset%BLOCK_SIZE) + (count - written_bytes)) > BLOCK_SIZE)
+  {
+    return 1;
+  }
+  else if (((offset%BLOCK_SIZE) + (count - written_bytes)) <= BLOCK_SIZE)
+  {
+    return 0;
+  }
+  return -1;
+}
+
+
 int fs_mount(const char *diskname)
 {
   if (block_disk_open(diskname) == -1) { return -1; }
@@ -228,7 +242,7 @@ int fs_create(const char *filename)
 int fs_delete(const char *filename)
 {
 	/* TODO: Phase 2 */
-  int flag = 0;
+  int found_file = 0;
   int index = 0;
   
   if (open_disk == false || filename[strlen(filename)] != '\0' || (strlen(filename) > FS_FILENAME_LEN-1))
@@ -455,57 +469,73 @@ int fs_write(int fd, void *buf, size_t count)
         FAT->fat[ROOTDIR[OFILE[fd].rootIndex].file_index].index = FAT_EOC;
         OFILE[fd].blockOffset = ROOTDIR[OFILE[fd].rootIndex].file_index;
     }
-    int bytes_written = 0;
     void *block_read_buffer[4096];
-    uint16_t FAT_offset = OFILE[fd].blockOffset;
+    uint16_t FATOffset = OFILE[fd].blockOffset;
     uint32_t fileOffset = OFILE[fd].fileOffset;
+    uint32_t fileOffsetRem = (OFILE[fd].fileOffset % BLOCK_SIZE);
     uint16_t temp_blockOffset;
-
+    int written_bytes = 0;
+    int next_fat_found_two;
+    int is_space_in_buffer = 1;
+    int num_spanning_blocks;
     /*do this while there is still space to write into the buffer*/
-    while(bytes_written < count)
+    while(is_space_in_buffer)
     {
-        block_read(FAT_offset+SUPERBLOCK.datablock_start_index, block_read_buffer);//reads in one block at a time
-
+        block_read(FATOffset+SUPERBLOCK.datablock_start_index, block_read_buffer);//reads in one block at a time
+        num_spanning_blocks = num_blocks_spanning(fileOffset, count, written_bytes);
+        if (num_spanning_blocks == -1) {return -1;}
       /*the write spans multiple blocks*/
-        if(((fileOffset%BLOCK_SIZE) + (count - bytes_written)) > BLOCK_SIZE)
+        if(num_spanning_blocks == 1)
         {
-            memcpy(block_read_buffer+(fileOffset%BLOCK_SIZE), buf+bytes_written,(BLOCK_SIZE-(fileOffset%BLOCK_SIZE))); // copy to the end of the block
-            block_write(FAT_offset+SUPERBLOCK.datablock_start_index, block_read_buffer);
-            if(ROOTDIR[OFILE[fd].rootIndex].file_size < (OFILE[fd].fileOffset+(BLOCK_SIZE-(fileOffset%BLOCK_SIZE)))){
-                ROOTDIR[OFILE[fd].rootIndex].file_size += (BLOCK_SIZE-(fileOffset%BLOCK_SIZE));
+            memcpy(block_read_buffer+fileOffsetRem, buf+written_bytes,(BLOCK_SIZE-(fileOffsetRem))); // copy to the end of the block
+            block_write(FATOffset+SUPERBLOCK.datablock_start_index, block_read_buffer);
+            if(ROOTDIR[OFILE[fd].rootIndex].file_size < (OFILE[fd].fileOffset+(BLOCK_SIZE-fileOffsetRem)))
+            {
+                ROOTDIR[OFILE[fd].rootIndex].file_size += (BLOCK_SIZE-fileOffsetRem);
             }
-            bytes_written+=(BLOCK_SIZE-(fileOffset%BLOCK_SIZE)); //increment the bytes_written with what was able to be write
-            fileOffset += BLOCK_SIZE - (fileOffset%BLOCK_SIZE); // increment the offset with what was write
-            OFILE[fd].fileOffset = fileOffset;
-            temp_blockOffset = find_next_fat(OFILE[fd].blockOffset); // write to the next block
+            written_bytes += (BLOCK_SIZE-fileOffsetRem); //increment the written_bytes with what was able to be write
+            fileOffset += (BLOCK_SIZE-fileOffsetRem); // increment the offset with what was write
+            OFILE[fd].fileOffset = (BLOCK_SIZE-fileOffsetRem);
+            temp_blockOffset = FAT->fat[OFILE[fd].blockOffset].index; // write to the next block
 
+            next_fat_found_two = 0;
             if (temp_blockOffset == FAT_EOC)
             {
-                temp_blockOffset = find_free_fat();
-                if(temp_blockOffset == FAT_EOC)
+                for (int k = 0; k < SUPERBLOCK.num_data_blocks; k++)
+                {
+                  if (FAT->fat[k].index == 0)
+                  {
+                    temp_blockOffset = k;
+                    next_fat_found_two = 1;
+                    break;
+                  }
+                }
+                if(next_fat_found_two == 0)
                 {
                     FAT->fat[OFILE[fd].blockOffset].index = temp_blockOffset;
-                    return bytes_written;
+                    return written_bytes;
                 }
             }
-            FAT->fat[OFILE[fd].blockOffset].index = temp_blockOffset;
             OFILE[fd].blockOffset = temp_blockOffset;
-            FAT_offset = temp_blockOffset;
+            FATOffset = temp_blockOffset;
+            FAT->fat[OFILE[fd].blockOffset].index = temp_blockOffset;
         }
 
-        else if(((fileOffset%BLOCK_SIZE) + (count - bytes_written)) <= BLOCK_SIZE)//the write only spans 1 block
+        else if(num_spanning_blocks == 0)//the write only spans 1 block
         {
-            memcpy( block_read_buffer+(fileOffset%BLOCK_SIZE), buf+bytes_written, (count - bytes_written));
-            block_write(FAT_offset+SUPERBLOCK.datablock_start_index, block_read_buffer);
-            if(ROOTDIR[OFILE[fd].rootIndex].file_size < fileOffset+ (count - bytes_written)){
-                ROOTDIR[OFILE[fd].rootIndex].file_size +=(count - bytes_written);
+            memcpy( block_read_buffer+fileOffsetRem, buf+written_bytes, (count - written_bytes));
+            block_write(FATOffset+SUPERBLOCK.datablock_start_index, block_read_buffer);
+            if(ROOTDIR[OFILE[fd].rootIndex].file_size < fileOffset+ (count - written_bytes))
+            {
+                ROOTDIR[OFILE[fd].rootIndex].file_size +=(count - written_bytes);
             }
-            OFILE[fd].fileOffset += (count - bytes_written); 
-            bytes_written+=(count - bytes_written); //increment the bytes_written with what was able to be write
+            OFILE[fd].fileOffset += (count - written_bytes); 
+            written_bytes+=(count - written_bytes); //increment the written_bytes with what was able to be write
             fileOffset =  OFILE[fd].fileOffset;
         }
+        if (written_bytes >= count) { is_space_in_buffer = 0; }
     }
-    return bytes_written;
+    return written_bytes;
 
 //  return 1;  
 }
@@ -522,7 +552,7 @@ int fs_read(int fd, void *buf, size_t count)
     int bytes_read = 0;
     void *buffer[4096];
     uint32_t filesize = ROOTDIR[OFILE[fd].rootIndex].file_size;
-    uint16_t FAT_offset = OFILE[fd].blockOffset;
+    uint16_t FATOffset = OFILE[fd].blockOffset;
     uint32_t fileOffset = OFILE[fd].fileOffset;
     uint32_t temp_count = 0;
 
@@ -540,7 +570,7 @@ int fs_read(int fd, void *buf, size_t count)
     /*do this while there is still space to read into the buffer*/
     while(bytes_read < temp_count)
     { 
-        block_read(FAT_offset+SUPERBLOCK.datablock_start_index, buffer);//reads in one block at a time
+        block_read(FATOffset+SUPERBLOCK.datablock_start_index, buffer);//reads in one block at a time
         /*the read spans multiple blocks*/
         if(((fileOffset%BLOCK_SIZE) + (temp_count - bytes_read)) >= BLOCK_SIZE)
         {
@@ -548,8 +578,8 @@ int fs_read(int fd, void *buf, size_t count)
             bytes_read+=(BLOCK_SIZE-(fileOffset%BLOCK_SIZE)); //increment the bytes_read with what was able to be read
             OFILE[fd].fileOffset += BLOCK_SIZE - (fileOffset%BLOCK_SIZE); // increment the offset with what was read
             fileOffset =  OFILE[fd].fileOffset;
-            FAT_offset = find_next_fat(OFILE[fd].blockOffset); // move to the next block
-            OFILE[fd].blockOffset = FAT_offset;//update the next block offset
+            FATOffset = find_next_fat(OFILE[fd].blockOffset); // move to the next block
+            OFILE[fd].blockOffset = FATOffset;//update the next block offset
         }
 
         else if(((fileOffset%BLOCK_SIZE) + (temp_count - bytes_read)) < BLOCK_SIZE)//the read only spans 1 block
