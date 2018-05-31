@@ -99,24 +99,24 @@ The specifications for each struct is as follows:
 
 ##### fs_mount(diskname), fs_umount(void), fs_info(void)
 
-The *fs_mount* function is used to mount a disk onto the drive.  It checks to 
+* The *fs_mount* function is used to mount a disk onto the drive.  It checks to 
 make sure the disk is open, and then reads the data from the disk into the super 
 block, as well as the fat block, and the root block.
 
-*fs_umount* checks that there is open file descriptors and that the disk is open 
+* *fs_umount* checks that there is open file descriptors and that the disk is open 
 before writing to the virtual disk block starting at block 0.  It then writes 
 the fat block and the root block before checking if the disk can be closed.  If 
 the disk can be closed then the superblock memory is cleared using the 
 *mem_clear* function.
 
-*fs_info* is used to print super block values to the screen, which provides 
+* *fs_info* is used to print super block values to the screen, which provides 
 useful information about the disk to the user.  The disk is first checked to be 
 open, and then free fat blocks and free roots are calculated using an iterative 
 process.  Super block infomation then gets printed to the screen.
 
 ##### fs_create(filename), fs_delete(filename), fs_ls(void)
 
-The *fs_create* function creates an empty file named *filename* in the root 
+* The *fs_create* function creates an empty file named *filename* in the root 
 directory of the file system.  The function error checks on a closed disk, or if 
 the filename is longer than the maximum filename characters allowed, or if the
 file count exceeds the maximum file count.  There is then a for loop which 
@@ -125,7 +125,7 @@ returned.  The root directory is then traversed through until an empty file slot
 is found.  Once the file slot is found then the filename is copied into the root 
 directory and file size and file index is updated, and file count is incremented.
 
-*fs_delete* deletes a specified *filename* from the root directory of the file 
+* *fs_delete* deletes a specified *filename* from the root directory of the file 
 system.  The function first error checks on a closed disk, whether the 
 *filename* is empty, or if the filename is longer than the maximum filename 
 characters allowed.  A for loop then checks all the files in the root directory 
@@ -135,33 +135,33 @@ checked to see if it is still open.  The index of the root directory is then
 updated null and the file count is decremented, and the fat blocks are cleared 
 out.
 
-*fs_ls* is used to list information about files located in the root directory.  
+* *fs_ls* is used to list information about files located in the root directory.  
 The function error checks on a closed disk, traverses the root directory and 
 prints file information for each file in the root directory.  Amongst 
 information is the files name, size, and data block index.
 
 ##### fs_open(*filename), fs_close(fd), fs_stat(fd), fs_lseek(fd, offset)
 
-The *fs_open* function opens a file for writing and/or reading and returns the 
+* The *fs_open* function opens a file for writing and/or reading and returns the 
 file descriptor of that file.  There is an error check on closed disk, file name 
 length, or if there are too many open files.  The root directory is then 
 traversed to find the index of the root.  The ofile struct is then initialized 
 on the first available file descriptor in the file descriptor table, and then 
 the file descriptor is returned.
 
-*fs_close* is used to close a file descriptor.  It error checks on a closed disk 
+* *fs_close* is used to close a file descriptor.  It error checks on a closed disk 
 or if the file descriptor is greater than the max count, or if there is an 
 invalid file descriptor, or if the file descriptor has no filename.  The 
 filename of the file descriptor is then set to null and the file descriptor 
 count is decremented.
 
-*fs_stat* is used to get the current size of the file in the file descriptor.  
+* *fs_stat* is used to get the current size of the file in the file descriptor.  
 It error checks on a closed disk or if the file descriptor is greater than the 
 max count, or if there is an invalid file descriptor, or if the file descriptor 
 has no filename.  It then checks the files in the root directory to find a match 
 and returns the file size.
 
-*fs_lseek* is used to set the file offset associated with a particular file 
+* *fs_lseek* is used to set the file offset associated with a particular file 
 within a file descriptor.  This is used for read and write operations.  It error 
 checks on a closed disk or if the file descriptor is greater than the max count, 
 or if there is an invalid file descriptor, or if the file descriptor has no 
@@ -171,7 +171,7 @@ The blocks offset is then updated.
 
 ##### fs_write(fd, *buf, count), fs_read(fd, *buf, count)
 
-*fs_write* is used to write a certain amount of data into a file.  It error 
+* *fs_write* is used to write a certain amount of data into a file.  It error 
 checks on a closed disk or if the file descriptor is greater than the max count, 
 or if there is an invalid file descriptor, or if the file descriptor has no 
 filename.  If the file index is at the end of chain then the file is extended to 
@@ -183,7 +183,7 @@ the block is extended so that the data can be written to.  If it doesn't surpass
 the set BLOCK_SIZE then the spanned blocks are simply written to the block.  The 
 function then returns the number of written bytes.
 
-*fs_read* is used to read a certain amount of data from a file.  It error 
+* *fs_read* is used to read a certain amount of data from a file.  It error 
 checks on a closed disk or if the file descriptor is greater than the max count, 
 or if there is an invalid file descriptor, or if the file descriptor has no 
 filename.  While there is space in the buffer, the data is read from each block 
