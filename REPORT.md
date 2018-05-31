@@ -5,8 +5,9 @@
 ### Introduction
 
 In this project we have implemented a File Allocation Table (FAT) file system 
-that supports up to 128 files in a single root directory.  Our file system is 
-implemented on top of a virtual disk which uses two layers consisting of:
+that supports up to 128 files in a single root directory.  The file system has a 
+signature of '**ECS150-FS**'. It is implemented on top of a virtual disk which 
+uses two layers consisting of:
 
 1. The Block API, which is used to open/close a virtual disk & read/write blocks
 
@@ -15,13 +16,85 @@ in the disk, adding/deleting new files, reading/writing files.
 
 ### Report
 
+##### Background Information
+
+Executables used: 
+
+	1. fs_make.x
+	2. fs_ref.x
+	3. test_fs.x
+
+Disk creation can be done using **fs_make.x** with the following arguments:
+	fs_make.x <*diskname*> <*data block count*>
+	
+The *diskname* is created with the file extension *.fs*.
+
+**fs_ref.x** and **test_fs.x** contain the following commands which can be used 
+with the created disk:
+
+	1. info <*diskname*>					(lists disks information)
+	2. ls <*diskname*> <*filename*>			(lists the file system)
+	3. add <*diskname*> <*host filename*>	(adds a file to the disk)
+	4. rm <*diskname*> <*filename*>			(removes a file from the disk)
+	5. cat <*diskname*> <*filename*>		(lists the contents of a file)
+	6. stat <*diskname*> <*filename*>		(lists the size of a file)
+
 For our working FAT file system, we have implemented the following structs to 
 manage the super block, root directory, file allocation table, and open files.
 
 The specifications for each struct is as follows:
 
 	```c
-	//PUT STRUCTS HERE
+	//Superblock is the very first block of the disk and contains information about 
+	//the file system
+	struct superblock
+	{
+	  char signature[8];
+	  uint16_t num_blocks_vdisk;
+	  uint16_t rootDir_block_index;
+	  uint16_t datablock_start_index;
+	  uint16_t num_data_blocks;
+	  uint8_t num_fat_blocks;
+	  uint8_t padding[4079];  
+	}__attribute__((packed));
+
+	//Root directory is 128 entries stored in the block following the FAT
+	struct rootDirectory
+	{
+	  char filename[16];
+	  uint32_t file_size;
+	  uint16_t file_index;
+	  uint8_t padding[10];
+	}__attribute__((packed));
+
+	//Data blocks are used by the content of the files
+	struct dataBlock
+	{
+	  uint16_t index;
+	}__attribute__((packed));
+
+	//File Allocation table
+	struct FileAllocTable
+	{
+	  struct dataBlock fat[8192];
+	}__attribute__((packed));
+
+	struct fd_open
+	{
+	  char filename[16];
+	  uint8_t index;
+	  uint16_t fileDescriptor;
+	  uint16_t blockOffset;
+	  uint16_t fileOffset;
+	}__attribute__((packed));
+
+	struct fd_open FDTable[32];
+	static int fd_count = 0; //Checks against FS_OPEN_MAX_COUNT
+	struct superblock SUPERBLOCK;
+	struct rootDirectory ROOTDIR[128];
+	struct FileAllocTable *FAT = 0;
+	static bool open_disk = false;
+	static int file_count = 0;
 	```
 
 ##### fs_mount(diskname), fs_umount(void), fs_info(void)
@@ -66,10 +139,6 @@ out.
 The function error checks on a closed disk, traverses the root directory and 
 prints file information for each file in the root directory.  Amongst 
 information is the files name, size, and data block index.
-
-	```c
-	//Insert Code Here
-	```
 
 ##### fs_open(*filename), fs_close(fd), fs_stat(fd), fs_lseek(fd, offset)
 
