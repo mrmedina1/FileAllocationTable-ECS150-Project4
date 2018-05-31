@@ -42,18 +42,104 @@ open, and then free fat blocks and free roots are calculated using an iterative
 process.  Super block infomation then gets printed to the screen.
 
 ##### fs_create(filename), fs_delete(filename), fs_ls(void)
-	
+
+The *fs_create* function creates an empty file named *filename* in the root 
+directory of the file system.  The function error checks on a closed disk, or if 
+the filename is longer than the maximum filename characters allowed, or if the
+file count exceeds the maximum file count.  There is then a for loop which 
+checks each filename for a match.  If there is a match then there is an error 
+returned.  The root directory is then traversed through until an empty file slot 
+is found.  Once the file slot is found then the filename is copied into the root 
+directory and file size and file index is updated, and file count is incremented.
+
+*fs_delete* deletes a specified *filename* from the root directory of the file 
+system.  The function first error checks on a closed disk, whether the 
+*filename* is empty, or if the filename is longer than the maximum filename 
+characters allowed.  A for loop then checks all the files in the root directory 
+for a match, and if there is a match then the index is stored.  If there is no 
+match then an error is sent back as a -1.  The file descriptor is then error 
+checked to see if it is still open.  The index of the root directory is then 
+updated null and the file count is decremented, and the fat blocks are cleared 
+out.
+
+*fs_ls* is used to list information about files located in the root directory.  
+The function error checks on a closed disk, traverses the root directory and 
+prints file information for each file in the root directory.  Amongst 
+information is the files name, size, and data block index.
+
 	```c
 	//Insert Code Here
 	```
 
 ##### fs_open(*filename), fs_close(fd), fs_stat(fd), fs_lseek(fd, offset)
 
+The *fs_open* function opens a file for writing and/or reading and returns the 
+file descriptor of that file.  There is an error check on closed disk, file name 
+length, or if there are too many open files.  The root directory is then 
+traversed to find the index of the root.  The ofile struct is then initialized 
+on the first available file descriptor in the file descriptor table, and then 
+the file descriptor is returned.
+
+*fs_close* is used to close a file descriptor.  It error checks on a closed disk 
+or if the file descriptor is greater than the max count, or if there is an 
+invalid file descriptor, or if the file descriptor has no filename.  The 
+filename of the file descriptor is then set to null and the file descriptor 
+count is decremented.
+
+*fs_stat* is used to get the current size of the file in the file descriptor.  
+It error checks on a closed disk or if the file descriptor is greater than the 
+max count, or if there is an invalid file descriptor, or if the file descriptor 
+has no filename.  It then checks the files in the root directory to find a match 
+and returns the file size.
+
+*fs_lseek* is used to set the file offset associated with a particular file 
+within a file descriptor.  This is used for read and write operations.  It error 
+checks on a closed disk or if the file descriptor is greater than the max count, 
+or if there is an invalid file descriptor, or if the file descriptor has no 
+filename, or if the offset surpasses the end of a file.  The block offset is set 
+to start index of data block and the open files offset attribute is then set.  
+The blocks offset is then updated.
+
 ##### fs_write(fd, *buf, count), fs_read(fd, *buf, count)
+
+*fs_write* is used to write a certain amount of data into a file.  It error 
+checks on a closed disk or if the file descriptor is greater than the max count, 
+or if there is an invalid file descriptor, or if the file descriptor has no 
+filename.  If the file index is at the end of chain then the file is extended to 
+hold the additional data.  While there is space in the buffer, the block is read 
+and the number of spanned blocks is calculated and checked on whether the number 
+of blocks surpasses the set BLOCK_SIZE.  If the spanned blocks surpass the 
+BLOCK_SIZE then the block is written to the BLOCK_SIZE and then 
+the block is extended so that the data can be written to.  If it doesn't surpass 
+the set BLOCK_SIZE then the spanned blocks are simply written to the block.  The 
+function then returns the number of written bytes.
+
+*fs_read* is used to read a certain amount of data from a file.  It error 
+checks on a closed disk or if the file descriptor is greater than the max count, 
+or if there is an invalid file descriptor, or if the file descriptor has no 
+filename.  While there is space in the buffer, the data is read from each block 
+starting at the data blocks start index in addition to the blocks offset passed 
+in.  If the number of spanned blocks surpassed the set BLOCK_SIZE, then the 
+spanned block is read to the BLOCK_SIZE and the blocks offset is updated.  If 
+the number of spanned blocks does not surpass the set BLOCK_SIZE, then the 
+spanned block is simply read and stored.  The number of bytes read is returned.
 
 ##### test_fs_student.sh
 
 ##### Makefile
+
+* Our Makefile generates a static library archive named **'libfs.a'** when 
+*'make'* is called from the test directory.
+
+It compiles and links all files from the libfs directory into the library 
+and generates executables in the test directory that are from all of the .c 
+files within the test directory.
+
+Use *'make clean'* to return the test and libfs directory to original 
+state.  This includes removing all .o, .x, and .a files.
+
+* Executables produced by Make:
+	1. **test_fs.x** (used to test the FAT file system)
 
 ### Limitations
 
