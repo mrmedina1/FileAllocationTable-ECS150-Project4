@@ -32,9 +32,9 @@ The *diskname* is created with the file extension *.fs*.
 **fs_ref.x** and **test_fs.x** contain the following commands which can be used 
 with the created disk:
 
-	1. info <*diskname*>					(lists disks information)
+	1. info <*diskname*>				(lists disks information)
 	2. ls <*diskname*> <*filename*>			(lists the file system)
-	3. add <*diskname*> <*host filename*>	(adds a file to the disk)
+	3. add <*diskname*> <*host filename*>		(adds a file to the disk)
 	4. rm <*diskname*> <*filename*>			(removes a file from the disk)
 	5. cat <*diskname*> <*filename*>		(lists the contents of a file)
 	6. stat <*diskname*> <*filename*>		(lists the size of a file)
@@ -210,15 +210,19 @@ state.  This includes removing all .o, .x, and .a files.
 * Executables produced by Make:
 	1. **test_fs.x** (used to test the FAT file system)
 
-### Limitations
+# Limitations
 
-* Has only been compiled through GCC.
+* Using the **rm** command with **test_fs.x** to remove a file from the 
+directory causes a hangup.  This is most likely because there is an issue with 
+our delete function.
+
+* Using the **ls** command with **test_fs.x** to list the file structure causes 
+a mounting issue when trying to run **fs_ref.x** after.  This is most likely 
+due to an issue with *fs_umount* in *fs.c*
+
+* This has only been compiled through GCC
 
 ### Sources
-* Source1
+* Used for memcpy() information
 
-http://google.com
-
-* Source2
-
-http://google.com
+http://www.geeksforgeeks.org/write-memcpy/
