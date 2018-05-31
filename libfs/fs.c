@@ -460,11 +460,12 @@ int fs_write(int fd, void *buf, size_t count)
     uint16_t blockOffset = FDTable[fd].blockOffset;
     uint32_t fileOffset = FDTable[fd].fileOffset;
     uint32_t fileOffsetRem = (FDTable[fd].fileOffset % BLOCK_SIZE);
-    uint16_t temp_blockOffset;
+    uint16_t next_block;
     int written_bytes = 0;
     int next_fat_found_two;
     int is_space_in_buffer = 1;
     int num_spanning_blocks;
+    int bytes_written_sofar = 0;
     while(is_space_in_buffer)
     {
         block_read(blockOffset+SUPERBLOCK.datablock_start_index, block_read_buffer);
@@ -479,32 +480,33 @@ int fs_write(int fd, void *buf, size_t count)
             {
                 ROOTDIR[FDTable[fd].index].file_size += (BLOCK_SIZE-fileOffsetRem);
             }
-            written_bytes += (BLOCK_SIZE-fileOffsetRem); 
-            fileOffset += (BLOCK_SIZE-fileOffsetRem); 
-            FDTable[fd].fileOffset = (BLOCK_SIZE-fileOffsetRem);
-            temp_blockOffset = FAT->fat[FDTable[fd].blockOffset].index; 
+            bytes_written_sofar = (BLOCK_SIZE-fileOffsetRem);
+            written_bytes += bytes_written_sofar; 
+            fileOffset += bytes_written_sofar; 
+            FDTable[fd].fileOffset = bytes_written_sofar;
+            next_block = FAT->fat[FDTable[fd].blockOffset].index; 
 
             next_fat_found_two = 0;
-            if (temp_blockOffset == FAT_EOC)
+            if (next_block == FAT_EOC)
             {
                 for (int k = 0; k < SUPERBLOCK.num_data_blocks; k++)
                 {
                   if (FAT->fat[k].index == 0)
                   {
-                    temp_blockOffset = k;
+                    next_block = k;
                     next_fat_found_two = 1;
                     break;
                   }
                 }
                 if(next_fat_found_two == 0)
                 {
-                    FAT->fat[FDTable[fd].blockOffset].index = temp_blockOffset;
+                    FAT->fat[FDTable[fd].blockOffset].index = next_block;
                     return written_bytes;
                 }
             }
-            FDTable[fd].blockOffset = temp_blockOffset;
-            blockOffset = temp_blockOffset;
-            FAT->fat[FDTable[fd].blockOffset].index = temp_blockOffset;
+            FDTable[fd].blockOffset = next_block;
+            blockOffset = next_block;
+            FAT->fat[FDTable[fd].blockOffset].index = next_block;
         }
 
         else if(num_spanning_blocks == 0)
