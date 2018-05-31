@@ -476,11 +476,11 @@ int fs_write(int fd, void *buf, size_t count)
         {
             memcpy(block_read_buffer+fileOffsetRem, buf+written_bytes,(BLOCK_SIZE-(fileOffsetRem))); 
             block_write(blockOffset+SUPERBLOCK.datablock_start_index, block_read_buffer);
+            bytes_written_sofar = (BLOCK_SIZE-fileOffsetRem);
             if(ROOTDIR[FDTable[fd].index].file_size < (FDTable[fd].fileOffset+(BLOCK_SIZE-fileOffsetRem)))
             {
-                ROOTDIR[FDTable[fd].index].file_size += (BLOCK_SIZE-fileOffsetRem);
+                ROOTDIR[FDTable[fd].index].file_size += bytes_written_sofar;
             }
-            bytes_written_sofar = (BLOCK_SIZE-fileOffsetRem);
             written_bytes += bytes_written_sofar; 
             fileOffset += bytes_written_sofar; 
             FDTable[fd].fileOffset = bytes_written_sofar;
