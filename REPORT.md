@@ -32,12 +32,12 @@ The *diskname* is created with the file extension *.fs*.
 **fs_ref.x** and **test_fs.x** contain the following commands which can be used 
 with the created disk:
 
-	1. info <*diskname*>				(lists disks information)
-	2. ls <*diskname*> <*filename*>			(lists the file system)
-	3. add <*diskname*> <*host filename*>		(adds a file to the disk)
-	4. rm <*diskname*> <*filename*>			(removes a file from the disk)
-	5. cat <*diskname*> <*filename*>		(lists the contents of a file)
-	6. stat <*diskname*> <*filename*>		(lists the size of a file)
+	1. info <diskname>				(lists disks information)
+	2. ls <diskname> <filename>			(lists the file system)
+	3. add <diskname> <host filename>		(adds a file to the disk)
+	4. rm <diskname> <filename>			(removes a file from the disk)
+	5. cat <diskname> <filename>		(lists the contents of a file)
+	6. stat <diskname> <filename>		(lists the size of a file)
 
 For our working FAT file system, we have implemented the following structs to 
 manage the super block, root directory, file allocation table, and open files.
