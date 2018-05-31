@@ -44,7 +44,7 @@ manage the super block, root directory, file allocation table, and open files.
 
 The specifications for each struct is as follows:
 
-	```c
+```c
 	//Superblock is the very first block of the disk and contains information about 
 	//the file system
 	struct superblock
@@ -95,7 +95,7 @@ The specifications for each struct is as follows:
 	struct FileAllocTable *FAT = 0;
 	static bool open_disk = false;
 	static int file_count = 0;
-	```
+```
 
 ##### fs_mount(diskname), fs_umount(void), fs_info(void)
 
